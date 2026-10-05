@@ -192,7 +192,12 @@ function Get-MediaFiles([string]$Root) {
     return [pscustomobject]@{ Files = @($files | Sort-Object FullName); Skipped = @($skipped) }
 }
 
-function Get-Sha256([string]$Path) { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash }
+function Get-Sha256([string]$Path) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $fs = New-Object System.IO.FileStream($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+    try { return ([System.BitConverter]::ToString($sha.ComputeHash($fs))).Replace('-', '') }
+    finally { $fs.Dispose(); $sha.Dispose() }
+}
 
 function Get-TakenDate($File) {
     $ext = $File.Extension.ToLowerInvariant()
