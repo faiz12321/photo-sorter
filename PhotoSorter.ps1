@@ -1,5 +1,5 @@
 # Photo Sorter - simple window. Copies photos into Year\Month folders. Your originals are never changed.
-param([switch]$SelfTest)
+param([switch]$SelfTest, [string]$DemoSource, [string]$DemoDest, [string]$ShotDir)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -48,6 +48,7 @@ $previewBtn.Add_Click({
             $note = if ($i.Action -eq 'Copy') { $i.Target.Substring($script:plan.Dest.Length).TrimStart('\', '/') + $(if ($i.Reason) { '  (' + $i.Reason + ')' } else { '' }) } else { $i.Reason }
             $row = New-Object System.Windows.Forms.ListViewItem($label); [void]$row.SubItems.Add($i.Source); [void]$row.SubItems.Add($note); [void]$list.Items.Add($row)
         }
+        foreach ($k in $script:plan.Skipped) { $row = New-Object System.Windows.Forms.ListViewItem('Skipped'); [void]$row.SubItems.Add($k.Path); [void]$row.SubItems.Add($k.Reason); [void]$list.Items.Add($row) }
         $status.Text = "$($s.ToCopy) to copy ($($s.FromFileDate) sorted by file date because no date taken was found), $($s.Duplicates) exact duplicates left out, $($s.AlreadyThere) already there, $($s.Skipped) skipped. Nothing has been changed yet."
         $copyBtn.Enabled = ($s.ToCopy -gt 0)
     } catch { [void][System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Photo Sorter') }
@@ -58,7 +59,7 @@ $copyBtn.Add_Click({
     if (-not $script:plan) { return }
     $s = Get-PlanSummary $script:plan
     $ask = "Copy $($s.ToCopy) photos into:`n$($script:plan.Dest)`n`nYour original photos stay where they are. Nothing is deleted or overwritten."
-    if ([System.Windows.Forms.MessageBox]::Show($ask, 'Photo Sorter', 'OKCancel') -ne 'OK') { return }
+    if (-not $SelfTest) { if ([System.Windows.Forms.MessageBox]::Show($ask, 'Photo Sorter', 'OKCancel') -ne 'OK') { return } }
     $form.Cursor = 'WaitCursor'; $status.Text = 'Copying...'; $form.Refresh()
     try {
         $r = Invoke-SortPlan $script:plan
@@ -76,5 +77,33 @@ $undoBtn.Add_Click({
     catch { [void][System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Photo Sorter') }
 })
 
-if ($SelfTest) { Write-Host "GUI built: $($form.Controls.Count) controls"; $form.Dispose(); exit 0 }
+function Save-Shot([string]$Name) {
+    $form.Refresh(); [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 400
+    $bmp = New-Object System.Drawing.Bitmap($form.Width, $form.Height)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen($form.Location, [System.Drawing.Point]::Empty, $form.Size)
+    $g.Dispose()
+    $path = Join-Path $ShotDir $Name
+    $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+    Write-Host "SHOT $Name $((Get-Item $path).Length) bytes"
+    Write-Host "B64BEGIN $Name"
+    $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
+    for ($i = 0; $i -lt $b64.Length; $i += 200) { Write-Host $b64.Substring($i, [Math]::Min(200, $b64.Length - $i)) }
+    Write-Host "B64END $Name"
+}
+
+if ($SelfTest) {
+    if (-not $DemoSource) { Write-Host "GUI built: $($form.Controls.Count) controls"; $form.Dispose(); exit 0 }
+    # Drive the real window: choose folders, press Preview, press Copy, and photograph it.
+    $srcBox.Text = $DemoSource; $dstBox.Text = $DemoDest
+    $form.StartPosition = 'Manual'; $form.Location = New-Object System.Drawing.Point(20, 20)
+    $form.TopMost = $true; $form.Show(); [System.Windows.Forms.Application]::DoEvents()
+    $previewBtn.PerformClick()
+    Write-Host "after preview: copy button enabled = $($copyBtn.Enabled); rows = $($list.Items.Count); status = $($status.Text)"
+    Save-Shot 'preview.png'
+    $copyBtn.PerformClick()
+    Write-Host "after copy: status = $($status.Text)"
+    Save-Shot 'after-copy.png'
+    $form.Close(); exit 0
+}
 [void]$form.ShowDialog()
