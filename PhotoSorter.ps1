@@ -23,9 +23,10 @@ $previewBtn = Add-Button '3. Preview' 20 165 160
 $copyBtn = Add-Button '4. Copy photos' 190 165 160; $copyBtn.Enabled = $false
 $undoBtn = Add-Button 'Undo a run...' 360 165 160
 
-$status = Add-Label 'Choose two folders to start.' 20 210 760
+$status = Add-Label 'Choose two folders to start.' 20 208 765
+$status.Size = New-Object System.Drawing.Size(765, 48)
 $list = New-Object System.Windows.Forms.ListView
-$list.Location = New-Object System.Drawing.Point(20, 240); $list.Size = New-Object System.Drawing.Size(765, 300); $list.View = 'Details'; $list.FullRowSelect = $true
+$list.Location = New-Object System.Drawing.Point(20, 262); $list.Size = New-Object System.Drawing.Size(765, 280); $list.View = 'Details'; $list.FullRowSelect = $true
 $list.BackColor = [System.Drawing.Color]::FromArgb(36, 39, 48); $list.ForeColor = [System.Drawing.Color]::White
 [void]$list.Columns.Add('What happens', 130); [void]$list.Columns.Add('Photo', 330); [void]$list.Columns.Add('Goes to / note', 290)
 $form.Controls.Add($list)
@@ -64,6 +65,7 @@ $copyBtn.Add_Click({
     try {
         $r = Invoke-SortPlan $script:plan
         $status.Text = "Done. Copied $($r.Copied), $($r.Failed.Count) failed. Undo log: $($r.LogPath)"
+        foreach ($row in $list.Items) { if ($row.Text -eq 'Copy') { $row.Text = 'Copied' } }
         $copyBtn.Enabled = $false; $script:plan = $null
     } catch { [void][System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Photo Sorter') }
     finally { $form.Cursor = 'Default' }
