@@ -1,0 +1,17 @@
+name: test
+on: workflow_dispatch
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests (Windows PowerShell 5.1)
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File Run-Tests.ps1
+      - name: Tests (PowerShell 7)
+        shell: pwsh
+        run: pwsh -NoProfile -File Run-Tests.ps1
+      - name: Window builds
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -STA -File PhotoSorter.ps1 -SelfTest
