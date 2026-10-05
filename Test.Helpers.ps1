@@ -43,3 +43,26 @@ function New-FakeMp4([string]$Path, [datetime]$UtcCreated) {
     $all.AddRange($moov)
     [IO.File]::WriteAllBytes($Path, $all.ToArray())
 }
+
+
+function New-ExifTiffEx([string]$Taken, [bool]$Big) {
+    $t = New-Object System.Collections.Generic.List[byte]
+    $w = { param($v, $n)
+        if ($Big) { for ($i = $n - 1; $i -ge 0; $i--) { $t.Add([byte](($v -shr (8 * $i)) -band 0xFF)) } }
+        else { for ($i = 0; $i -lt $n; $i++) { $t.Add([byte](($v -shr (8 * $i)) -band 0xFF)) } } }
+    if ($Big) { $t.AddRange([byte[]][char[]]'MM') } else { $t.AddRange([byte[]][char[]]'II') }
+    & $w 42 2; & $w 8 4
+    & $w 1 2; & $w 0x8769 2; & $w 4 2; & $w 1 4; & $w 26 4; & $w 0 4
+    & $w 1 2; & $w 0x9003 2; & $w 2 2; & $w 20 4; & $w 44 4; & $w 0 4
+    $t.AddRange([byte[]][char[]]$Taken); $t.Add(0)
+    return ,$t.ToArray()
+}
+function New-JpegFromTiff([string]$Path, [byte[]]$Tiff, [string]$Salt = '') {
+    $seg = New-Object System.Collections.Generic.List[byte]
+    $seg.AddRange([byte[]][char[]]'Exif'); $seg.Add(0); $seg.Add(0); $seg.AddRange($Tiff)
+    $len = $seg.Count + 2
+    $out = New-Object System.Collections.Generic.List[byte]
+    $out.Add(0xFF); $out.Add(0xD8); $out.Add(0xFF); $out.Add(0xE1); $out.Add([byte]($len -shr 8)); $out.Add([byte]($len -band 0xFF))
+    $out.AddRange($seg); $out.AddRange([byte[]][char[]]("salt:" + $Salt)); $out.Add(0xFF); $out.Add(0xD9)
+    [IO.File]::WriteAllBytes($Path, $out.ToArray())
+}
