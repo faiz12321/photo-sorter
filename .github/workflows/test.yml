@@ -15,3 +15,15 @@ jobs:
       - name: Window builds
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -STA -File PhotoSorter.ps1 -SelfTest
+      - name: Drive the window and photograph it
+        shell: powershell
+        run: |
+          $r = Join-Path $env:RUNNER_TEMP 'demo'
+          New-Item -ItemType Directory -Path $r -Force | Out-Null
+          $src = & ./Make-Demo.ps1 -Root $r
+          $shots = Join-Path $r 'shots'; New-Item -ItemType Directory -Path $shots | Out-Null
+          Add-Type -AssemblyName System.Windows.Forms
+          Write-Host ("Screen: " + [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width + "x" + [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height)
+          powershell -NoProfile -ExecutionPolicy Bypass -STA -File PhotoSorter.ps1 -SelfTest -DemoSource $src -DemoDest (Join-Path $r 'Sorted') -ShotDir $shots
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Get-ChildItem (Join-Path $r 'Sorted') -Recurse -File | ForEach-Object { $_.FullName.Substring($r.Length) }
