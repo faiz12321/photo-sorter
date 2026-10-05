@@ -38,6 +38,60 @@ public static class PhotoSorterExif {
             }
         } catch { return null; }
     }
+    // HEIC/HEIF: the EXIF block sits inside the file; look for its header near the start.
+    public static string ReadHeicDateTaken(string path) {
+        try {
+            using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read)) {
+                int max = (int)Math.Min(fs.Length, 4194304L);
+                byte[] d = new byte[max]; int got = 0;
+                while (got < max) { int r = fs.Read(d, got, max - got); if (r <= 0) break; got += r; }
+                for (int i = 0; i + 12 < got; i++) {
+                    if (d[i] == 'E' && d[i+1] == 'x' && d[i+2] == 'i' && d[i+3] == 'f' && d[i+4] == 0 && d[i+5] == 0) {
+                        bool ii = d[i+6] == 'I' && d[i+7] == 'I' && d[i+8] == 42 && d[i+9] == 0;
+                        bool mm = d[i+6] == 'M' && d[i+7] == 'M' && d[i+8] == 0 && d[i+9] == 42;
+                        if (ii || mm) {
+                            byte[] sub = new byte[got - (i + 6)];
+                            Array.Copy(d, i + 6, sub, 0, sub.Length);
+                            string r = FromTiff(sub, 0);
+                            if (r != null) return r;
+                        }
+                    }
+                }
+                return null;
+            }
+        } catch { return null; }
+    }
+    // MP4/MOV/M4V/3GP: creation time from the movie header (UTC), seconds since 1904-01-01. 0 means not set.
+    public static string ReadMp4Created(string path) {
+        try {
+            using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read)) {
+                long end = fs.Length; long pos = 0;
+                while (pos + 8 <= end) {
+                    fs.Seek(pos, SeekOrigin.Begin);
+                    byte[] h = new byte[8]; if (fs.Read(h, 0, 8) != 8) return null;
+                    long size = ((long)h[0] << 24) | ((long)h[1] << 16) | ((long)h[2] << 8) | h[3];
+                    string type = Encoding.ASCII.GetString(h, 4, 4);
+                    long hdr = 8;
+                    if (size == 1) { byte[] e = new byte[8]; if (fs.Read(e, 0, 8) != 8) return null; size = 0; for (int k = 0; k < 8; k++) size = (size << 8) | e[k]; hdr = 16; }
+                    else if (size == 0) size = end - pos;
+                    if (size < hdr) return null;
+                    if (type == "moov") { end = Math.Min(end, pos + size); pos += hdr; continue; }
+                    if (type == "mvhd") {
+                        byte[] m = new byte[20]; if (fs.Read(m, 0, 20) < 8) return null;
+                        long secs;
+                        if (m[0] == 1) { secs = 0; for (int k = 0; k < 8; k++) secs = (secs << 8) | m[4 + k]; }
+                        else secs = ((long)m[4] << 24) | ((long)m[5] << 16) | ((long)m[6] << 8) | m[7];
+                        if (secs <= 0) return null;
+                        DateTime dt = new DateTime(1904, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddSeconds(secs).ToLocalTime();
+                        if (dt.Year < 1990 || dt.Year > 2100) return null;
+                        return dt.ToString("yyyy:MM:dd HH:mm:ss");
+                    }
+                    pos += size;
+                }
+                return null;
+            }
+        } catch { return null; }
+    }
     static int U16(byte[] d, int o, bool le) { if (o < 0 || o + 2 > d.Length) throw new Exception(); return le ? d[o] | (d[o+1] << 8) : (d[o] << 8) | d[o+1]; }
     static long U32(byte[] d, int o, bool le) { if (o < 0 || o + 4 > d.Length) throw new Exception(); return le ? (long)d[o] | ((long)d[o+1] << 8) | ((long)d[o+2] << 16) | ((long)d[o+3] << 24) : ((long)d[o] << 24) | ((long)d[o+1] << 16) | ((long)d[o+2] << 8) | (long)d[o+3]; }
     static string FromTiff(byte[] d, int t) {
@@ -126,6 +180,8 @@ function Get-MediaFiles([string]$Root) {
         try { $items = @(Get-ChildItem -LiteralPath $dir.FullName -Force -ErrorAction Stop) }
         catch { [void]$skipped.Add([pscustomobject]@{ Path = $dir.FullName; Reason = 'Cannot open folder' }); continue }
         foreach ($it in $items) {
+            # Online-only files (OneDrive and similar): reading them would download them, so they are left alone.
+            if (([int]$it.Attributes -band 0x441000) -ne 0) { [void]$skipped.Add([pscustomobject]@{ Path = $it.FullName; Reason = 'Online-only file (not downloaded)' }); continue }
             if ($it.Attributes -band [IO.FileAttributes]::ReparsePoint) { [void]$skipped.Add([pscustomobject]@{ Path = $it.FullName; Reason = 'Shortcut/link, not followed' }); continue }
             if ($it.PSIsContainer) { $stack.Push($it); continue }
             if (($it.Attributes -band [IO.FileAttributes]::Hidden) -or ($it.Attributes -band [IO.FileAttributes]::System)) { [void]$skipped.Add([pscustomobject]@{ Path = $it.FullName; Reason = 'Hidden or system file' }); continue }
@@ -140,10 +196,11 @@ function Get-Sha256([string]$Path) { return (Get-FileHash -LiteralPath $Path -Al
 
 function Get-TakenDate($File) {
     $ext = $File.Extension.ToLowerInvariant()
-    if ($ext -eq '.jpg' -or $ext -eq '.jpeg') {
-        $s = [PhotoSorterExif]::ReadJpegDateTaken($File.FullName)
-        if ($s) { return [pscustomobject]@{ Date = [datetime]::ParseExact($s, 'yyyy:MM:dd HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture); Source = 'Date taken' } }
-    }
+    $s = $null; $label = 'Date taken'
+    if ($ext -eq '.jpg' -or $ext -eq '.jpeg') { $s = [PhotoSorterExif]::ReadJpegDateTaken($File.FullName) }
+    elseif ($ext -eq '.heic' -or $ext -eq '.heif') { $s = [PhotoSorterExif]::ReadHeicDateTaken($File.FullName) }
+    elseif ($ext -eq '.mp4' -or $ext -eq '.mov' -or $ext -eq '.m4v' -or $ext -eq '.3gp') { $s = [PhotoSorterExif]::ReadMp4Created($File.FullName); $label = 'Video created' }
+    if ($s) { return [pscustomobject]@{ Date = [datetime]::ParseExact($s, 'yyyy:MM:dd HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture); Source = $label } }
     return [pscustomobject]@{ Date = $File.LastWriteTime; Source = 'File date' }
 }
 
