@@ -19,7 +19,7 @@ Each run writes an undo log in `PhotoSorter-logs` inside the destination. "Undo 
 Download the folder, double-click `Start-PhotoSorter.bat`.
 
 ## Tests
-`Run-Tests.ps1` (30 checks) runs on Windows PowerShell 5.1 and PowerShell 7. The GitHub Actions workflow also builds the window, presses Preview and Copy in it and takes screenshots.
+`Run-Tests.ps1` (31 checks) runs on Windows PowerShell 5.1 and PowerShell 7. The GitHub Actions workflow also builds the window, presses Preview and Copy in it and takes screenshots.
 
 ## Known limits
 - Tested on a GitHub Windows runner and Linux, not yet on a personal Windows 10/11 PC with a real OneDrive library.
