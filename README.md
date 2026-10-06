@@ -1,5 +1,7 @@
 # Photo Sorter (private prototype, not released)
 
+**Local folders only.** For photos stored in ordinary folders on your PC. Cloud-synced folders, including OneDrive, are not supported. If your photos are in a cloud folder, first copy the downloaded files to a separate folder outside it.
+
 **Got a messy folder of phone photos? This sorts copies of them into neat Year\Month folders by the day each photo was actually taken.**
 
 Your originals stay exactly where they are. Photo Sorter only ever makes copies.
@@ -26,9 +28,9 @@ Sorted\
 - Exact duplicates are listed and left out of the copy. They are never deleted.
 - Every copy is checked against the original after it is written.
 - Run it twice and nothing is copied twice.
-- Cloud-only files (OneDrive "files on demand") are skipped so nothing gets downloaded by surprise.
+- Online-only (cloud placeholder) files are skipped so nothing gets downloaded by surprise, even if one turns up in an ordinary folder.
 - Shortcuts and links are not followed. Hidden and system files are skipped.
-- It refuses system folders, whole drives, a destination inside the photo folder, and a destination reached through a shortcut or junction.
+- It refuses system folders, whole drives, cloud-synced folders, a destination inside the photo folder, and a destination reached through a shortcut or junction.
 
 ## How the date is chosen
 Photo "date taken" (JPEG, HEIC) or video creation time (MP4, MOV). If a file has neither, its file date is used, and the preview tells you how many files fell back.
@@ -39,12 +41,12 @@ Every run writes an undo log in `PhotoSorter-logs` inside the destination. **Und
 ## Tests, honestly
 `Run-Tests.ps1` (31 checks) and `Run-Extra-Tests.ps1` (40 more: odd names, a 1,200-photo folder, link handling, undo edge cases) pass on Windows PowerShell 5.1 and PowerShell 7 on a GitHub-hosted Windows machine. The same run builds the window, presses Preview and Copy, and takes screenshots.
 
-## OneDrive and other cloud folders
-Photo Sorter was tested against genuine Windows cloud-file placeholders (made with the same Windows Cloud Files system OneDrive uses, in `Run-CloudFiles-Test.ps1`). Online-only files are skipped and never downloaded. Files already downloaded to the PC are copied like any other file.
-That is **not** the same as testing real OneDrive. Until that is done, use Photo Sorter on a copy of photos that are already on your PC, not on your live OneDrive library.
+## Cloud folders are not supported
+Photo Sorter refuses a photo or destination folder that sits inside OneDrive, Dropbox, Google Drive or iCloud Drive (it checks the folder names and the OneDrive location Windows reports). This is a deliberate limit, not a bug: real cloud sync has not been tested.
+For the record, the tests include genuine Windows cloud-file placeholders (made with the same Windows Cloud Files system OneDrive uses, `Run-CloudFiles-Test.ps1`): online-only files were skipped and never downloaded. That check is not OneDrive support and does not make cloud folders safe to use.
 
 ## What has NOT been tested
-- A real OneDrive library or the OneDrive app itself (sync states, Files On-Demand changes, Known Folder Move).
+- Any real OneDrive library or the OneDrive app itself. Cloud folders are refused instead.
 - Someone's own Windows 10/11 PC, network drives, antivirus software, or tens of thousands of real photos.
 - The Undo file picker in the window (the undo logic itself is tested).
 - HEIC dates come from scanning for the EXIF block. Unusual files fall back to the file date.
