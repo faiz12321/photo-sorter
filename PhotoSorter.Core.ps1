@@ -157,11 +157,27 @@ function Test-PathInside([string]$Child, [string]$Parent) {
     return $c.StartsWith($p + $sep, $cmp)
 }
 
+function Test-PathThroughLink([string]$Path) {
+    # True when any folder on the way to $Path (that already exists) is a link or junction.
+    $p = Get-FullPathNormalized $Path
+    while ($p) {
+        if (Test-Path -LiteralPath $p) {
+            $it = Get-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
+            if ($it -and ($it.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return $true }
+        }
+        $parent = [System.IO.Path]::GetDirectoryName($p)
+        if (-not $parent -or $parent -eq $p) { break }
+        $p = $parent
+    }
+    return $false
+}
+
 function Test-FolderChoice([string]$Source, [string]$Dest) {
     # Returns an error message, or $null when the choice is safe.
     if (-not $Source -or -not (Test-Path -LiteralPath $Source -PathType Container)) { return 'The photo folder does not exist.' }
     if (-not $Dest) { return 'Choose a destination folder.' }
     if (Test-PathInside $Dest $Source) { return 'The destination cannot be the same as, or inside, the photo folder.' }
+    if (Test-PathThroughLink $Dest) { return 'The destination goes through a shortcut or junction. Pick a normal folder so the copies cannot end up inside your photo folder.' }
     $blocked = @($env:windir, $env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramData) | Where-Object { $_ }
     foreach ($b in $blocked) { if ((Test-PathInside $Dest $b) -or (Test-PathInside $Source $b)) { return 'System folders are not allowed.' } }
     $root = [System.IO.Path]::GetPathRoot((Get-FullPathNormalized $Dest))
