@@ -13,6 +13,17 @@ Info ("PowerShell " + $PSVersionTable.PSVersion + " on " + [Environment]::OSVers
 function New-Root { $r = Join-Path ([IO.Path]::GetTempPath()) ("psx-" + [guid]::NewGuid().ToString('N').Substring(0, 8)); New-Item -ItemType Directory -Path $r | Out-Null; return $r }
 function Snapshot([string]$Dir) { return ((Get-ChildItem -LiteralPath $Dir -Recurse -Force -File | Sort-Object FullName | ForEach-Object { $_.FullName + '|' + (Get-Sha256 $_.FullName) + '|' + $_.LastWriteTimeUtc.Ticks + '|' + [int]$_.Attributes }) -join "`n") }
 
+# ---------- 0. Local folders only ----------
+$cr = New-Root; $cs = Join-Path $cr 'OneDrive'; $cp = Join-Path $cs 'Pictures'; New-Item -ItemType Directory -Path $cp | Out-Null
+$lr = Join-Path $cr 'plain'; New-Item -ItemType Directory -Path $lr | Out-Null
+Check 'cloud: source inside a folder named OneDrive is refused' ($null -ne (Test-FolderChoice $cp (Join-Path $lr 'out')))
+Check 'cloud: destination inside a folder named OneDrive is refused' ($null -ne (Test-FolderChoice $lr (Join-Path $cp 'out')))
+Check 'cloud: Dropbox and Google Drive folders are refused' (($null -ne (Test-FolderChoice $lr (Join-Path $cr 'Dropbox\x'))) -and ($null -ne (Test-FolderChoice $lr (Join-Path $cr 'Google Drive\x'))))
+$savedOD = $env:OneDrive; $env:OneDrive = $lr
+Check 'cloud: folder under the OneDrive environment root is refused' ($null -ne (Test-FolderChoice $lr (Join-Path $lr 'x')) -and $null -ne (Test-FolderChoice (Join-Path $lr 'a') (Join-Path $cr 'elsewhere')))
+$env:OneDrive = $savedOD
+Check 'cloud: ordinary folders still allowed' ($null -eq (Test-FolderChoice $lr (Join-Path $cr 'out2')))
+
 # ---------- 1. Odd file names ----------
 $root = New-Root; $src = Join-Path $root 'in'; $dst = Join-Path $root 'out'; New-Item -ItemType Directory -Path $src, $dst | Out-Null
 $arabic = (-join ([char[]](0x0635, 0x0648, 0x0631, 0x0629))) + '.jpg'          # "photo" in Arabic letters
