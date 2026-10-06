@@ -1,0 +1,11 @@
+name: dialogs
+on: workflow_dispatch
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Photograph the folder dialog and refusal message
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -STA -File Shot-Dialogs.ps1
