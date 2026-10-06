@@ -91,6 +91,8 @@ $copyCount = $copyCount - $hydItem.Count
 $skipOnline = $skipOnline - @($hydSkip | Where-Object { $_.Reason -like 'Online-only*' }).Count
 $skipLink = $skipLink - @($hydSkip | Where-Object { $_.Reason -like 'Shortcut*' }).Count
 Info "plan: copy=$copyCount, skipped as online-only=$skipOnline, skipped as link=$skipLink"
+Check 'a downloaded (has its data) placeholder is NOT treated as a link' ($hydSkip.Count -eq 0)
+Check 'a downloaded placeholder is planned for copy' ($hydItem.Count -eq 1 -and $hydItem[0].Action -eq 'Copy')
 Check 'real placeholders are all skipped (3 of 3)' (($skipOnline + $skipLink) -eq 3)
 Check 'real placeholders are reported as online-only' ($skipOnline -eq 3)
 Check 'only the genuine local photo is planned for copy' ($copyCount -eq 1)
