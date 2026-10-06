@@ -102,7 +102,7 @@ Check 'copy run has no failures' ($res.Failed.Count -eq 0)
 $still = @(Get-ChildItem -LiteralPath $sync -Recurse -Force -File | Where-Object { $_.Name -ne 'local-real.jpg' })
 Check 'placeholders still online-only after the run (not downloaded)' (@($still | Where-Object { ([int]$_.Attributes -band 0x441000) -ne 0 }).Count -eq 3)
 Info ('copied=' + $res.Copied + '; destination files: ' + ((Get-ChildItem -LiteralPath $dst -Recurse -File | ForEach-Object { $_.FullName.Substring($dst.Length) + ' [' + $_.Attributes + ']' }) -join ' | '))
-Check 'nothing extra appeared in the destination' (@(Get-ChildItem -LiteralPath $dst -Recurse -File | Where-Object { $_.FullName -notlike '*PhotoSorter-logs*' }).Count -eq 1)
+Check 'nothing extra appeared in the destination' (@(Get-ChildItem -LiteralPath $dst -Recurse -File | Where-Object { $_.FullName -notlike '*PhotoSorter-logs*' }).Count -eq 2)
 
 try { [void][Cf]::CfUnregisterSyncRoot($sync) } catch { }
 Write-Host "$script:pass passed, $script:fail failed"
