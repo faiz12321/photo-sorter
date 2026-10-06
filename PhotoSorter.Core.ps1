@@ -172,11 +172,20 @@ function Test-PathThroughLink([string]$Path) {
     return $false
 }
 
+function Test-InCloudFolder([string]$Path) {
+    # Cloud-synced folders (OneDrive, Dropbox, Google Drive, iCloud Drive) are out of scope: local folders only.
+    $full = Get-FullPathNormalized $Path
+    foreach ($e in @($env:OneDrive, $env:OneDriveConsumer, $env:OneDriveCommercial)) { if ($e -and (Test-PathInside $full $e)) { return $true } }
+    foreach ($seg in ($full -split '[\\/]')) { if ($seg -match '^(OneDrive( - .*)?|Dropbox|Google Drive|iCloudDrive|iCloud Drive)$') { return $true } }
+    return $false
+}
+
 function Test-FolderChoice([string]$Source, [string]$Dest) {
     # Returns an error message, or $null when the choice is safe.
     if (-not $Source -or -not (Test-Path -LiteralPath $Source -PathType Container)) { return 'The photo folder does not exist.' }
     if (-not $Dest) { return 'Choose a destination folder.' }
     if (Test-PathInside $Dest $Source) { return 'The destination cannot be the same as, or inside, the photo folder.' }
+    if ((Test-InCloudFolder $Source) -or (Test-InCloudFolder $Dest)) { return 'Cloud-synced folders, including OneDrive, are not supported. Photo Sorter is for photos stored in ordinary folders on your PC. If your photos are in a cloud folder, first copy the downloaded files to a separate folder outside it.' }
     if (Test-PathThroughLink $Dest) { return 'The destination goes through a shortcut or junction. Pick a normal folder so the copies cannot end up inside your photo folder.' }
     $blocked = @($env:windir, $env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramData) | Where-Object { $_ }
     foreach ($b in $blocked) { if ((Test-PathInside $Dest $b) -or (Test-PathInside $Source $b)) { return 'System folders are not allowed.' } }
