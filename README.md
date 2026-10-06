@@ -39,8 +39,12 @@ Every run writes an undo log in `PhotoSorter-logs` inside the destination. **Und
 ## Tests, honestly
 `Run-Tests.ps1` (31 checks) and `Run-Extra-Tests.ps1` (40 more: odd names, a 1,200-photo folder, link handling, undo edge cases) pass on Windows PowerShell 5.1 and PowerShell 7 on a GitHub-hosted Windows machine. The same run builds the window, presses Preview and Copy, and takes screenshots.
 
+## OneDrive and other cloud folders
+Photo Sorter was tested against genuine Windows cloud-file placeholders (made with the same Windows Cloud Files system OneDrive uses, in `Run-CloudFiles-Test.ps1`). Online-only files are skipped and never downloaded. Files already downloaded to the PC are copied like any other file.
+That is **not** the same as testing real OneDrive. Until that is done, use Photo Sorter on a copy of photos that are already on your PC, not on your live OneDrive library.
+
 ## What has NOT been tested
-- A real OneDrive library. Cloud-only files are only simulated with a file attribute, which is not the same thing.
+- A real OneDrive library or the OneDrive app itself (sync states, Files On-Demand changes, Known Folder Move).
 - Someone's own Windows 10/11 PC, network drives, antivirus software, or tens of thousands of real photos.
 - The Undo file picker in the window (the undo logic itself is tested).
 - HEIC dates come from scanning for the EXIF block. Unusual files fall back to the file date.
