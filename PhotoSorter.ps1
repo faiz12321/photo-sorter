@@ -33,7 +33,7 @@ $form.Controls.Add($list)
 
 $script:plan = $null
 function Pick-Folder($title) { $d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = $title; if ($d.ShowDialog() -eq 'OK') { return $d.SelectedPath } return $null }
-$srcBtn.Add_Click({ $p = Pick-Folder 'Choose the folder with your photos'; if ($p) { $srcBox.Text = $p; $copyBtn.Enabled = $false; $script:plan = $null } })
+$srcBtn.Add_Click({ $p = Pick-Folder 'Choose the folder with your photos (an ordinary folder on this PC, not OneDrive or another cloud folder)'; if ($p) { $srcBox.Text = $p; $copyBtn.Enabled = $false; $script:plan = $null } })
 $dstBtn.Add_Click({ $p = Pick-Folder 'Choose where the sorted copies should go'; if ($p) { $dstBox.Text = $p; $copyBtn.Enabled = $false; $script:plan = $null } })
 
 $previewBtn.Add_Click({
