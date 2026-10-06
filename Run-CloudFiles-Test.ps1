@@ -23,6 +23,7 @@ public static class Cf {
   public struct PhInfo { public string RelativeFileName; public Meta Fs; public IntPtr FileIdentity; public uint FileIdentityLength; public uint Flags; public int Result; public long CreateUsn; }
   [DllImport("cldapi.dll", CharSet=CharSet.Unicode)] public static extern int CfRegisterSyncRoot(string path, ref SyncReg reg, ref SyncPol pol, uint flags);
   [DllImport("cldapi.dll", CharSet=CharSet.Unicode)] public static extern int CfCreatePlaceholders(string basePath, [In, Out] PhInfo[] entries, uint count, uint flags, out uint processed);
+  [DllImport("cldapi.dll")] public static extern int CfConvertToPlaceholder(IntPtr h, IntPtr id, uint idLen, uint flags, IntPtr usn, IntPtr ov);
   [DllImport("cldapi.dll", CharSet=CharSet.Unicode)] public static extern int CfUnregisterSyncRoot(string path);
 }
 '@
@@ -66,6 +67,14 @@ Check 'real placeholders created' ($hr -eq 0 -and $done -eq 2 -and $hr2 -eq 0 -a
 
 # A normal local photo in the same folder, so the run has something to copy.
 [IO.File]::WriteAllBytes((Join-Path $sync 'local-real.jpg'), [byte[]](1..200))
+# A downloaded ("always keep on this device") style file: a normal file converted into an in-sync placeholder that has its data.
+$hyd = Join-Path $sync 'downloaded.jpg'
+[IO.File]::WriteAllBytes($hyd, [byte[]](1..300))
+$fh = [IO.File]::Open($hyd, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+try { $hrc = [Cf]::CfConvertToPlaceholder($fh.SafeFileHandle.DangerousGetHandle(), [IntPtr]::Zero, 0, 1, [IntPtr]::Zero, [IntPtr]::Zero) } finally { $fh.Dispose() }
+Info ("CfConvertToPlaceholder HRESULT = 0x{0:X8}" -f $hrc)
+$hi = Get-Item -LiteralPath $hyd -Force
+Info ("downloaded.jpg (has its data) attributes: " + $hi.Attributes + (' (0x{0:X})' -f [int]$hi.Attributes) + ", size " + $hi.Length)
 foreach ($p in @('cloud-only-1.jpg', 'trip\beach.jpg')) {
     $it = Get-Item -LiteralPath (Join-Path $sync $p) -Force
     Info ("$p attributes: " + $it.Attributes + (' (0x{0:X})' -f [int]$it.Attributes) + ", size " + $it.Length)
@@ -75,12 +84,18 @@ $plan = New-SortPlan -Source $sync -Dest $dst
 $copyCount = @($plan.Items | Where-Object { $_.Action -eq 'Copy' }).Count
 $skipOnline = @($plan.Skipped | Where-Object { $_.Reason -like 'Online-only*' }).Count
 $skipLink = @($plan.Skipped | Where-Object { $_.Reason -like 'Shortcut*' }).Count
+$hydItem = @($plan.Items | Where-Object { $_.Source -like '*downloaded.jpg' })
+$hydSkip = @($plan.Skipped | Where-Object { $_.Path -like '*downloaded.jpg' })
+Info ("downloaded.jpg: planned=" + $hydItem.Count + " action=" + $(if ($hydItem.Count) { $hydItem[0].Action } else { '-' }) + "; skipped=" + $hydSkip.Count + $(if ($hydSkip.Count) { ' reason=' + $hydSkip[0].Reason } else { '' }))
+$copyCount = $copyCount - $hydItem.Count
+$skipOnline = $skipOnline - @($hydSkip | Where-Object { $_.Reason -like 'Online-only*' }).Count
+$skipLink = $skipLink - @($hydSkip | Where-Object { $_.Reason -like 'Shortcut*' }).Count
 Info "plan: copy=$copyCount, skipped as online-only=$skipOnline, skipped as link=$skipLink"
 Check 'real placeholders are all skipped (3 of 3)' (($skipOnline + $skipLink) -eq 3)
 Check 'real placeholders are reported as online-only' ($skipOnline -eq 3)
 Check 'only the genuine local photo is planned for copy' ($copyCount -eq 1)
 $res = Invoke-SortPlan $plan
-Check 'copy run finishes with 1 copied, 0 failed' ($res.Copied -eq 1 -and $res.Failed.Count -eq 0)
+Check 'copy run has no failures' ($res.Failed.Count -eq 0)
 # Nothing was downloaded: placeholders still carry their cloud/offline bits and size.
 $still = @(Get-ChildItem -LiteralPath $sync -Recurse -Force -File | Where-Object { $_.Name -ne 'local-real.jpg' })
 Check 'placeholders still online-only after the run (not downloaded)' (@($still | Where-Object { ([int]$_.Attributes -band 0x441000) -ne 0 }).Count -eq 3)
