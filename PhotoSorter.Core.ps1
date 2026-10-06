@@ -163,7 +163,7 @@ function Test-PathThroughLink([string]$Path) {
     while ($p) {
         if (Test-Path -LiteralPath $p) {
             $it = Get-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
-            if ($it -and ($it.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return $true }
+            if ($it -and (Test-IsRealLink $it)) { return $true }
         }
         $parent = [System.IO.Path]::GetDirectoryName($p)
         if (-not $parent -or $parent -eq $p) { break }
@@ -185,6 +185,15 @@ function Test-FolderChoice([string]$Source, [string]$Dest) {
     return $null
 }
 
+function Test-IsRealLink($Item) {
+    # True for symlinks and junctions. Cloud-file placeholders (OneDrive and similar) are also reparse points,
+    # but they are ordinary files/folders to the user, so they are not "links".
+    if (-not ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return $false }
+    $p = $Item.PSObject.Properties['LinkType']
+    if ($p -and $p.Value) { return $true }
+    return $false
+}
+
 function Get-MediaFiles([string]$Root) {
     # Manual walk so symlinks and junctions are never followed.
     $skipped = New-Object System.Collections.ArrayList
@@ -198,7 +207,7 @@ function Get-MediaFiles([string]$Root) {
         foreach ($it in $items) {
             # Online-only files (OneDrive and similar): reading them would download them, so they are left alone.
             if (([int]$it.Attributes -band 0x441000) -ne 0) { [void]$skipped.Add([pscustomobject]@{ Path = $it.FullName; Reason = 'Online-only file (not downloaded)' }); continue }
-            if ($it.Attributes -band [IO.FileAttributes]::ReparsePoint) { [void]$skipped.Add([pscustomobject]@{ Path = $it.FullName; Reason = 'Shortcut/link, not followed' }); continue }
+            if (Test-IsRealLink $it) { [void]$skipped.Add([pscustomobject]@{ Path = $it.FullName; Reason = 'Shortcut/link, not followed' }); continue }
             if ($it.PSIsContainer) { $stack.Push($it); continue }
             if (($it.Attributes -band [IO.FileAttributes]::Hidden) -or ($it.Attributes -band [IO.FileAttributes]::System)) { [void]$skipped.Add([pscustomobject]@{ Path = $it.FullName; Reason = 'Hidden or system file' }); continue }
             if ($script:MediaExtensions -notcontains $it.Extension.ToLowerInvariant()) { continue }
