@@ -126,7 +126,7 @@ if ($isWin) {
     Check 'rules: missing source refused' ($null -ne (Test-FolderChoice (Join-Path $root 'nope') (Join-Path $root 'd')))
     Check 'rules: destination named like the source with a longer name is allowed' ($null -eq (Test-FolderChoice $s ($s + '-sorted')))
     $junc = Join-Path $root 'junc'; cmd /c mklink /J "$junc" "$s" | Out-Null
-    Info ('destination reached through a junction that points at the source: ' + $(if (Test-FolderChoice $s (Join-Path $junc 'x')) { 'refused' } else { 'ALLOWED (known gap)' }))
+    Check 'rules: destination reached through a junction that points at the source is refused' ($null -ne (Test-FolderChoice $s (Join-Path $junc 'x')))
 } else {
     Check 'rules: destination named like the source with a longer name is allowed' ($null -eq (Test-FolderChoice $s ($s + '-sorted')))
 }
