@@ -1,0 +1,11 @@
+name: cloudfiles
+on: workflow_dispatch
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Real Windows cloud-file placeholders (Windows PowerShell 5.1)
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File Run-CloudFiles-Test.ps1
