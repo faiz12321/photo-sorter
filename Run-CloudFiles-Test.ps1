@@ -69,7 +69,7 @@ Check 'real placeholders created' ($hr -eq 0 -and $done -eq 2 -and $hr2 -eq 0 -a
 [IO.File]::WriteAllBytes((Join-Path $sync 'local-real.jpg'), [byte[]](1..200))
 # A downloaded ("always keep on this device") style file: a normal file converted into an in-sync placeholder that has its data.
 $hyd = Join-Path $sync 'downloaded.jpg'
-[IO.File]::WriteAllBytes($hyd, [byte[]](1..200))
+[IO.File]::WriteAllBytes($hyd, [byte[]](11..210))
 $fh = [IO.File]::Open($hyd, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
 try { $hrc = [Cf]::CfConvertToPlaceholder($fh.SafeFileHandle.DangerousGetHandle(), [IntPtr]::Zero, 0, 1, [IntPtr]::Zero, [IntPtr]::Zero) } finally { $fh.Dispose() }
 Info ("CfConvertToPlaceholder HRESULT = 0x{0:X8}" -f $hrc)
