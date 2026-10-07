@@ -1,5 +1,5 @@
 # Photo Sorter - simple window. Copies photos into Year\Month folders. Your originals are never changed.
-param([switch]$SelfTest, [string]$DemoSource, [string]$DemoDest, [string]$ShotDir)
+param([switch]$SelfTestPartial, [switch]$SelfTest, [string]$DemoSource, [string]$DemoDest, [string]$ShotDir)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -68,7 +68,8 @@ $copyBtn.Add_Click({
         foreach ($row in $list.Items) {
             if ($row.Text -eq 'Copy') {
                 $outcome = Get-CopyRowOutcome $row.SubItems[1].Text $r
-                $row.Text = $outcome.Label; $row.SubItems[2].Text = $outcome.Note
+                $row.Text = $outcome.Label
+                $row.SubItems[2].Text = if ($outcome.Label -eq 'Copied') { $outcome.Note.Substring($script:plan.Dest.Length).TrimStart('\', '/') } else { $outcome.Note }
             }
         }
         $copyBtn.Enabled = $false; $script:plan = $null
@@ -108,9 +109,15 @@ if ($SelfTest) {
     $previewBtn.PerformClick()
     Write-Host "after preview: copy button enabled = $($copyBtn.Enabled); rows = $($list.Items.Count); status = $($status.Text)"
     Save-Shot 'preview.png'
+    if ($SelfTestPartial) {
+        $changed = @($script:plan.Items | Where-Object { $_.Action -eq 'Copy' })[0].Source
+        [IO.File]::AppendAllText($changed, 'DISPOSABLE SELFTEST CHANGE AFTER PREVIEW')
+    }
     $copyBtn.PerformClick()
     Write-Host "after copy: status = $($status.Text)"
     Save-Shot 'after-copy.png'
+    foreach ($row in $list.Items) { Write-Host ('ROW ' + $row.Text + ' | ' + $row.SubItems[2].Text) }
+    if ($SelfTestPartial -and (@($list.Items | Where-Object { $_.Text -eq 'Failed' }).Count -ne 1)) { throw 'Partial-copy window did not label exactly one Failed row.' }
     $form.Close(); exit 0
 }
 [void]$form.ShowDialog()
