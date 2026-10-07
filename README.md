@@ -15,7 +15,7 @@ Your originals stay exactly where they are. Copy makes new files. Undo can delet
 
 ## Get it and run it (Windows)
 1. On this page, press the green **Code** button, then **Download ZIP**.
-2. Right-click the ZIP in your Downloads folder, choose **Extract All...**, and extract to a normal folder such as `C:\Users\<you>\PhotoSorter`. Do not run it from inside the ZIP. Do not put it in a OneDrive folder.
+2. Right-click the ZIP in your Downloads folder, choose **Extract All...**, and extract to a folder outside OneDrive, such as `C:\PhotoSorter`. Do not run it from inside the ZIP. (Windows often syncs Documents and Desktop to OneDrive, so avoid those.)
 3. Open the extracted folder and double-click `Start-PhotoSorter.bat`.
 4. In the window: choose the folder with your photos, choose a new or empty folder for the sorted copies, press **Preview**, read what it says, then press **Copy photos**.
 5. To undo, press **Undo a run...** and choose the `undo-...json` receipt inside `PhotoSorter-logs` in your sorted-copies folder.
