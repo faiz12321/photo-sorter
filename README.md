@@ -13,6 +13,19 @@ Your originals stay exactly where they are. Copy makes new files. Undo can delet
 2. Pick the folder with your photos and an empty folder for the sorted copies.
 3. Press **Preview** to see what would happen, then **Copy** if you like it.
 
+## Get it and run it (Windows)
+1. On this page, press the green **Code** button, then **Download ZIP**.
+2. Right-click the ZIP in your Downloads folder, choose **Extract All...**, and extract to a normal folder such as `C:\Users\<you>\PhotoSorter`. Do not run it from inside the ZIP. Do not put it in a OneDrive folder.
+3. Open the extracted folder and double-click `Start-PhotoSorter.bat`.
+4. In the window: choose the folder with your photos, choose a new or empty folder for the sorted copies, press **Preview**, read what it says, then press **Copy photos**.
+5. To undo, press **Undo a run...** and choose the `undo-...json` receipt inside `PhotoSorter-logs` in your sorted-copies folder.
+
+What is tested and what is not:
+- **Tested:** the window opens and the Preview, Copy and failure screens work. This was driven by scripts on GitHub's Windows test machines (Windows build 26100), with the screenshots checked by eye.
+- **Not tested on a real PC:** the download-ZIP and double-click steps above. Windows may show a blue **SmartScreen** warning or block the file because it came from the internet and is not signed. This project is unsigned and nobody has tried it yet. If you are unsure, do not click through. Everything is plain text you can read: `PhotoSorter.ps1` and `PhotoSorter.Core.ps1` are the whole program.
+- **Not tested:** the Undo file picker in the window (the undo logic itself is tested).
+- Try it on a small folder of copies first.
+
 ## What you get
 ```
 Sorted\
