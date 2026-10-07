@@ -1,5 +1,5 @@
 # Photo Sorter - core logic. Works in Windows PowerShell 5.1 and PowerShell 7.
-# Copies photos into Year\Month folders by Date Taken. Never moves, deletes or overwrites anything.
+# Copies photos into Year\Month folders. Originals are not changed. Undo deletes verified copies.
 Set-StrictMode -Version 2.0
 
 if (-not ('PhotoSorterExif' -as [type])) {
@@ -186,6 +186,7 @@ function Test-FolderChoice([string]$Source, [string]$Dest) {
     if (-not $Dest) { return 'Choose a destination folder.' }
     if (Test-PathInside $Dest $Source) { return 'The destination cannot be the same as, or inside, the photo folder.' }
     if ((Test-InCloudFolder $Source) -or (Test-InCloudFolder $Dest)) { return 'Cloud-synced folders, including OneDrive, are not supported. Photo Sorter is for photos stored in ordinary folders on your PC. If your photos are in a cloud folder, first copy the downloaded files to a separate folder outside it.' }
+    if (Test-PathThroughLink $Source) { return 'The photo folder goes through a shortcut or junction. Pick a normal local folder.' }
     if (Test-PathThroughLink $Dest) { return 'The destination goes through a shortcut or junction. Pick a normal folder so the copies cannot end up inside your photo folder.' }
     $blocked = @($env:windir, $env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramData) | Where-Object { $_ }
     foreach ($b in $blocked) { if ((Test-PathInside $Dest $b) -or (Test-PathInside $Source $b)) { return 'System folders are not allowed.' } }
@@ -239,7 +240,12 @@ function Get-TakenDate($File) {
     if ($ext -eq '.jpg' -or $ext -eq '.jpeg') { $s = [PhotoSorterExif]::ReadJpegDateTaken($File.FullName) }
     elseif ($ext -eq '.heic' -or $ext -eq '.heif') { $s = [PhotoSorterExif]::ReadHeicDateTaken($File.FullName) }
     elseif ($ext -eq '.mp4' -or $ext -eq '.mov' -or $ext -eq '.m4v' -or $ext -eq '.3gp') { $s = [PhotoSorterExif]::ReadMp4Created($File.FullName); $label = 'Video created' }
-    if ($s) { return [pscustomobject]@{ Date = [datetime]::ParseExact($s, 'yyyy:MM:dd HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture); Source = $label } }
+    if ($s) {
+        $parsed = [datetime]::MinValue
+        if ([datetime]::TryParseExact($s, 'yyyy:MM:dd HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$parsed)) {
+            return [pscustomobject]@{ Date = $parsed; Source = $label }
+        }
+    }
     return [pscustomobject]@{ Date = $File.LastWriteTime; Source = 'File date' }
 }
 
@@ -265,6 +271,7 @@ function New-SortPlan {
         while ($true) {
             $cand = Join-Path $folder $name
             $key = $cand.ToLowerInvariant()
+            Assert-SafeTarget $cand $Source $destFull
             if (Test-Path -LiteralPath $cand) {
                 if ((Get-Sha256 $cand) -eq $hash) { $action = 'AlreadyThere'; $reason = 'Same file already in destination'; $target = $cand; break }
             } elseif (-not $planned.ContainsKey($key)) { $target = $cand; break }
@@ -290,58 +297,140 @@ function Get-PlanSummary($Plan) {
     }
 }
 
+function Assert-SafeTarget([string]$Path, [string]$Source, [string]$Dest) {
+    $full = Get-FullPathNormalized $Path
+    $destFull = Get-FullPathNormalized $Dest
+    if (-not (Test-PathInside $full $destFull) -or $full -eq $destFull) { throw 'Target is outside the destination folder.' }
+    if (Test-PathInside $full $Source) { throw 'Target points into the original photo folder.' }
+    if (Test-PathThroughLink $full) { throw 'Target goes through a link or junction. No copy or deletion is allowed.' }
+    if (Test-InCloudFolder $full) { throw 'Cloud-synced target folders are not supported.' }
+    foreach ($b in @($env:windir, $env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramData)) {
+        if ($b -and (Test-PathInside $full $b)) { throw 'Target is inside a system folder.' }
+    }
+}
+
+function Write-UndoReceipt($Log, [string]$LogPath) {
+    # Windows DPAPI binds the receipt to this Windows user and detects edited data.
+    # This is not a defense against malware or another process running as that user.
+    Add-Type -AssemblyName System.Security
+    $json = $Log | ConvertTo-Json -Depth 6 -Compress
+    $bytes = [Text.Encoding]::UTF8.GetBytes($json)
+    $entropy = [Text.Encoding]::UTF8.GetBytes('PhotoSorter.UndoReceipt.v1')
+    $sealed = [Security.Cryptography.ProtectedData]::Protect($bytes, $entropy, [Security.Cryptography.DataProtectionScope]::CurrentUser)
+    $envelope = [pscustomobject]@{ Tool = 'PhotoSorter'; ReceiptVersion = 1; ProtectedReceipt = [Convert]::ToBase64String($sealed) }
+    # Unique log name, no replacement of an older receipt.
+    $output = [Text.Encoding]::UTF8.GetBytes(($envelope | ConvertTo-Json -Compress))
+    $fs = New-Object IO.FileStream($LogPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    try { $fs.Write($output, 0, $output.Length) } finally { $fs.Dispose() }
+}
+
+function Read-UndoReceipt([string]$LogPath) {
+    Add-Type -AssemblyName System.Security
+    if (Test-PathThroughLink $LogPath) { throw 'Undo receipt cannot be reached through a link or junction.' }
+    $outer = Get-Content -LiteralPath $LogPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $vp = $outer.PSObject.Properties['ReceiptVersion']; $pp = $outer.PSObject.Properties['ProtectedReceipt']
+    if (-not $vp -or $vp.Value -ne 1 -or -not $pp) { throw 'This log is not a protected Photo Sorter receipt. Older or edited logs cannot be used for Undo.' }
+    try {
+        $entropy = [Text.Encoding]::UTF8.GetBytes('PhotoSorter.UndoReceipt.v1')
+        $bytes = [Security.Cryptography.ProtectedData]::Unprotect([Convert]::FromBase64String($pp.Value), $entropy, [Security.Cryptography.DataProtectionScope]::CurrentUser)
+        $log = [Text.Encoding]::UTF8.GetString($bytes) | ConvertFrom-Json
+    } catch { throw 'Undo receipt is damaged or belongs to another Windows user. No files were deleted.' }
+    if ($log.Tool -ne 'PhotoSorter' -or (Get-FullPathNormalized $LogPath) -ne $log.LogPath) { throw 'Undo receipt was moved or is not valid for this location.' }
+    $err = Test-FolderChoice $log.Source $log.Dest
+    if ($err) { throw ('Undo stopped: ' + $err) }
+    $expectedLogDir = Join-Path $log.Dest 'PhotoSorter-logs'
+    if ((Get-FullPathNormalized (Split-Path -Parent $LogPath)) -ne (Get-FullPathNormalized $expectedLogDir)) { throw 'Undo receipt is not in its original log folder.' }
+    # Validate the whole receipt before the first deletion, not one entry at a time.
+    foreach ($f in @($log.Files)) {
+        Assert-SafeTarget $f.Path $log.Source $log.Dest
+        if (Test-PathInside $f.Path $expectedLogDir) { throw 'Receipt cannot delete a log file.' }
+        if (-not (Test-PathInside $f.From $log.Source)) { throw 'Receipt source is outside the original photo folder.' }
+        if ($f.Hash -notmatch '^[0-9A-F]{64}$') { throw 'Receipt contains an invalid file hash.' }
+    }
+    foreach ($d in @($log.Dirs)) {
+        if ((Get-FullPathNormalized $d) -ne (Get-FullPathNormalized $log.Dest)) { Assert-SafeTarget $d $log.Source $log.Dest }
+        elseif (Test-PathThroughLink $d) { throw 'Destination became a link or junction.' }
+    }
+    return $log
+}
+
 function Invoke-SortPlan {
     param($Plan)
+    $err = Test-FolderChoice $Plan.Source $Plan.Dest
+    if ($err) { throw $err }
     $logDir = Join-Path $Plan.Dest 'PhotoSorter-logs'
     $createdDirs = New-Object System.Collections.ArrayList
     $createdFiles = New-Object System.Collections.ArrayList
     $failed = New-Object System.Collections.ArrayList
     $mk = {
         param([string]$d)
+        if ((Get-FullPathNormalized $d) -ne (Get-FullPathNormalized $Plan.Dest)) { Assert-SafeTarget $d $Plan.Source $Plan.Dest }
+        elseif (Test-PathThroughLink $d) { throw 'Destination became a link or junction.' }
         $missing = New-Object System.Collections.ArrayList
         $cur = $d
         while ($cur -and -not (Test-Path -LiteralPath $cur)) { [void]$missing.Add($cur); $cur = Split-Path -Parent $cur }
-        for ($k = $missing.Count - 1; $k -ge 0; $k--) { [void][IO.Directory]::CreateDirectory($missing[$k]); [void]$createdDirs.Add($missing[$k]) }
+        for ($k = $missing.Count - 1; $k -ge 0; $k--) { [void][IO.Directory]::CreateDirectory($missing[$k]); if (Test-PathInside $missing[$k] $Plan.Dest) { [void]$createdDirs.Add($missing[$k]) } }
     }
     $logPath = $null
     try {
         & $mk $Plan.Dest
         & $mk $logDir
-        $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
+        $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N')
         $logPath = Join-Path $logDir "undo-$stamp.json"
         foreach ($it in $Plan.Items) {
             if ($it.Action -ne 'Copy') { continue }
             try {
+                Assert-SafeTarget $it.Target $Plan.Source $Plan.Dest
+                if (-not (Test-PathInside $it.Source $Plan.Source) -or (Test-PathThroughLink $it.Source) -or (Test-InCloudFolder $it.Source)) { throw 'Photo source is no longer a normal local file.' }
+                $sourceItem = Get-Item -LiteralPath $it.Source -Force -ErrorAction Stop
+                if (([int]$sourceItem.Attributes -band 0x441000) -ne 0) { throw 'Photo became online-only after Preview.' }
+                # Check changed source before creating a copy.
+                if ((Get-Sha256 $it.Source) -ne $it.Hash) { throw 'Photo changed after Preview. Preview again.' }
                 & $mk (Split-Path -Parent $it.Target)
-                [IO.File]::Copy($it.Source, $it.Target, $false)   # $false = never overwrite
+                Assert-SafeTarget $it.Target $Plan.Source $Plan.Dest
+                [IO.File]::Copy($it.Source, $it.Target, $false)
                 if ((Get-Sha256 $it.Target) -ne $it.Hash) {
+                    Assert-SafeTarget $it.Target $Plan.Source $Plan.Dest
                     Remove-Item -LiteralPath $it.Target -Force
-                    throw 'Copy did not match the original and was removed'
+                    throw 'Copy did not match the preview and was removed'
                 }
                 [void]$createdFiles.Add([pscustomobject]@{ Path = $it.Target; Hash = $it.Hash; From = $it.Source })
-            } catch { [void]$failed.Add([pscustomobject]@{ Source = $it.Source; Error = $_.Exception.Message }) }
+            } catch { [void]$failed.Add([pscustomobject]@{ Source = $it.Source; Target = $it.Target; Error = $_.Exception.Message }) }
         }
     } finally {
         if ($logPath) {
-            $log = [pscustomobject]@{ Tool = 'PhotoSorter'; Created = (Get-Date).ToString('s'); Source = $Plan.Source; Dest = $Plan.Dest; Files = @($createdFiles); Dirs = @($createdDirs); Failed = @($failed) }
-            $log | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $logPath -Encoding UTF8
+            Assert-SafeTarget $logPath $Plan.Source $Plan.Dest
+            $log = [pscustomobject]@{ Tool = 'PhotoSorter'; Created = (Get-Date).ToString('s'); LogPath = (Get-FullPathNormalized $logPath); Source = $Plan.Source; Dest = $Plan.Dest; Files = @($createdFiles); Dirs = @($createdDirs); Failed = @($failed) }
+            Write-UndoReceipt $log $logPath
         }
     }
-    return [pscustomobject]@{ Copied = $createdFiles.Count; Failed = @($failed); LogPath = $logPath }
+    return [pscustomobject]@{ Copied = $createdFiles.Count; CreatedFiles = @($createdFiles); Failed = @($failed); LogPath = $logPath }
+}
+
+function Get-CopyRowOutcome([string]$Source, $Result) {
+    $good = @($Result.CreatedFiles | Where-Object { $_.From -eq $Source })
+    if ($good.Count) { return [pscustomobject]@{ Label = 'Copied'; Note = $good[0].Path } }
+    $bad = @($Result.Failed | Where-Object { $_.Source -eq $Source })
+    if ($bad.Count) { return [pscustomobject]@{ Label = 'Failed'; Note = $bad[0].Error } }
+    return [pscustomobject]@{ Label = 'Not copied'; Note = 'No successful copy was recorded.' }
 }
 
 function Undo-SortRun {
     param([string]$LogPath)
-    $log = Get-Content -LiteralPath $LogPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($log.Tool -ne 'PhotoSorter') { throw 'This is not a Photo Sorter log.' }
+    $log = Read-UndoReceipt $LogPath
     $removed = 0; $kept = New-Object System.Collections.ArrayList
     foreach ($f in @($log.Files)) {
+        Assert-SafeTarget $f.Path $log.Source $log.Dest
         if (-not (Test-Path -LiteralPath $f.Path)) { continue }
-        if ((Get-Sha256 $f.Path) -eq $f.Hash) { Remove-Item -LiteralPath $f.Path -Force; $removed++ }
-        else { [void]$kept.Add($f.Path) }   # changed since we copied it: not ours to delete
+        if ((Get-Sha256 $f.Path) -eq $f.Hash) {
+            Assert-SafeTarget $f.Path $log.Source $log.Dest
+            Remove-Item -LiteralPath $f.Path -Force; $removed++
+        } else { [void]$kept.Add($f.Path) }
     }
     $dirs = @($log.Dirs) | Sort-Object { $_.Length } -Descending
     foreach ($d in $dirs) {
+        if ((Get-FullPathNormalized $d) -eq (Get-FullPathNormalized $log.Dest)) { continue }
+        Assert-SafeTarget $d $log.Source $log.Dest
         if ((Test-Path -LiteralPath $d -PathType Container) -and -not (@(Get-ChildItem -LiteralPath $d -Force).Count) -and ($d -ne (Split-Path -Parent $LogPath))) { Remove-Item -LiteralPath $d -Force }
     }
     return [pscustomobject]@{ Removed = $removed; LeftAlone = @($kept) }
