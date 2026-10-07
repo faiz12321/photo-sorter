@@ -1,4 +1,6 @@
-# Photo Sorter (private prototype, not released)
+# Photo Sorter (early prototype)
+
+**Early prototype.** Tested on GitHub's Windows test machines, not yet on real people's PCs or photo libraries. Try it on a small folder of copies first. No warranty.
 
 **Local folders only.** For photos stored in ordinary folders on your PC. Cloud-synced folders, including OneDrive, are not supported. If your photos are in a cloud folder, first copy the downloaded files to a separate folder outside it.
 
@@ -57,5 +59,5 @@ For the record, the tests include genuine Windows cloud-file placeholders (made 
 ## Not the only tool
 Other photo tools can do this and more. Photo Sorter's goal is to be the simple, careful option for someone who just wants tidy folders and no surprises.
 
-## Private hardening in progress
-October 7 code review found gaps involving destination subfolder junctions, edited Undo logs, failed-copy row labels and invalid EXIF dates. The hardening passed the isolated Windows tests listed above. The actual partial-failure window was also checked on October 7: seven Copied rows and one Failed row with its reason, in https://github.com/faiz12321/photo-sorter/actions/runs/37585224322. The Undo file picker still needs checking. Do not use this prototype on valuable libraries or call it release-ready. Rechecking paths reduces accidental link redirection; it is not a guarantee against another program actively changing the filesystem during a run.
+## Status
+Early prototype. An October 7 code review found gaps involving destination subfolder junctions, edited Undo logs, failed-copy row labels and invalid EXIF dates. They are fixed and covered by the tests listed above. The actual partial-failure window was also checked on October 7: seven Copied rows and one Failed row with its reason, in https://github.com/faiz12321/photo-sorter/actions/runs/37585224322. The Undo file picker still needs checking. Try it on copies of photos before trusting it with anything you cannot replace. Rechecking paths reduces accidental link redirection; it is not a guarantee against another program actively changing the filesystem during a run.
