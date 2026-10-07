@@ -88,7 +88,8 @@ Check 'undo: edited copy left alone' ($u.LeftAlone.Count -eq 1 -and (Test-Path (
 Check 'undo: pre-existing file still there' ([IO.File]::ReadAllText((Join-Path $dst '2024/03/a.jpg')) -eq 'PRE-EXISTING DIFFERENT FILE')
 Check 'undo: unrelated file still there' (Test-Path (Join-Path $dst 'precious.txt'))
 Check 'undo: empty folders we made are gone' (-not (Test-Path (Join-Path $dst '2020')))
-Check 'undo: source still unchanged' ((Get-ChildItem -LiteralPath $src -Recurse -Force -File).Count -eq 6 -or $true)
+$afterUndo = Get-ChildItem -LiteralPath $src -Recurse -Force -File | ForEach-Object { $_.FullName + '|' + (Get-Sha256 $_.FullName) } | Sort-Object
+Check 'undo: source still unchanged' (($before -join "`n") -eq ($afterUndo -join "`n"))
 
 Remove-Item -LiteralPath $root -Recurse -Force
 Write-Host "`n$script:pass passed, $script:fail failed"
