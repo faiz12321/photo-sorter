@@ -65,7 +65,12 @@ $copyBtn.Add_Click({
     try {
         $r = Invoke-SortPlan $script:plan
         $status.Text = "Done. Copied $($r.Copied), $($r.Failed.Count) failed. Undo log: $($r.LogPath)"
-        foreach ($row in $list.Items) { if ($row.Text -eq 'Copy') { $row.Text = 'Copied' } }
+        foreach ($row in $list.Items) {
+            if ($row.Text -eq 'Copy') {
+                $outcome = Get-CopyRowOutcome $row.SubItems[1].Text $r
+                $row.Text = $outcome.Label; $row.SubItems[2].Text = $outcome.Note
+            }
+        }
         $copyBtn.Enabled = $false; $script:plan = $null
     } catch { [void][System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Photo Sorter') }
     finally { $form.Cursor = 'Default' }
