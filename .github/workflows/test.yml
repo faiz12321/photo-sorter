@@ -18,6 +18,12 @@ jobs:
       - name: Extra safety tests (PowerShell 7)
         shell: pwsh
         run: pwsh -NoProfile -File Run-Extra-Tests.ps1
+      - name: New safety regressions (Windows PowerShell 5.1)
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File Run-Safety-Regression.ps1
+      - name: New safety regressions (PowerShell 7)
+        shell: pwsh
+        run: pwsh -NoProfile -File Run-Safety-Regression.ps1
       - name: Window builds
         shell: powershell
         run: powershell -NoProfile -ExecutionPolicy Bypass -STA -File PhotoSorter.ps1 -SelfTest
